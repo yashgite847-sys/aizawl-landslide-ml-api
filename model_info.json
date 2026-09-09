@@ -1,0 +1,22 @@
+{
+    "model": "XGBoost",
+    "target": "landslide_occurred",
+    "features": [
+        "rainfall_mm",
+        "rain_sum_3d",
+        "rain_sum_7d",
+        "rain_sum_15d",
+        "rain_sum_30d",
+        "specific_humidity_kg_kg",
+        "soil_moisture_0_10cm",
+        "soil_moisture_10_40cm",
+        "soil_moisture_0_10cm_chg_3d",
+        "soil_moisture_10_40cm_chg_3d",
+        "soil_saturation_ratio",
+        "temperature_c",
+        "month",
+        "day_of_year",
+        "is_monsoon"
+    ],
+    "risk_probability_output": true
+}
