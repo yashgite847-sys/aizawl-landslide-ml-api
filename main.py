@@ -10,9 +10,9 @@ import os
 # ============================================================
 
 app = FastAPI(
-    title="Aizawl Landslide Risk Prediction API",
-    description="AI-based landslide risk prediction using XGBoost",
-    version="1.0"
+    title="GeoX Landslide Risk Prediction API",
+    description="AI-based landslide risk prediction using the trained ML model",
+    version="2.0"
 )
 
 
@@ -36,21 +36,20 @@ model = joblib.load(MODEL_FILE)
 
 FEATURES = [
     "rainfall_mm",
-    "rain_sum_3d",
-    "rain_sum_7d",
-    "rain_sum_15d",
-    "rain_sum_30d",
-    "specific_humidity_kg_kg",
     "soil_moisture_0_10cm",
-    "soil_moisture_10_40cm",
-    "soil_moisture_0_10cm_chg_3d",
-    "soil_moisture_10_40cm_chg_3d",
-    "soil_saturation_ratio",
     "temperature_c",
+    "specific_humidity_kg_kg",
     "month",
     "day_of_year",
     "is_monsoon"
 ]
+
+
+# ============================================================
+# MODEL THRESHOLD
+# ============================================================
+
+MODEL_THRESHOLD = 0.42
 
 
 # ============================================================
@@ -60,25 +59,17 @@ FEATURES = [
 class SensorData(BaseModel):
 
     rainfall_mm: float
-    rain_sum_3d: float
-    rain_sum_7d: float
-    rain_sum_15d: float
-    rain_sum_30d: float
-
-    specific_humidity_kg_kg: float
 
     soil_moisture_0_10cm: float
-    soil_moisture_10_40cm: float
-
-    soil_moisture_0_10cm_chg_3d: float
-    soil_moisture_10_40cm_chg_3d: float
-
-    soil_saturation_ratio: float
 
     temperature_c: float
 
+    specific_humidity_kg_kg: float
+
     month: int
+
     day_of_year: int
+
     is_monsoon: int
 
 
@@ -91,9 +82,11 @@ def home():
 
     return {
         "status": "online",
-        "message": "Aizawl Landslide Risk Prediction API",
+        "message": "GeoX Landslide Risk Prediction API",
         "model": "XGBoost",
-        "features": len(FEATURES)
+        "model_version": "2.0",
+        "features": len(FEATURES),
+        "threshold": MODEL_THRESHOLD
     }
 
 
@@ -106,7 +99,8 @@ def health():
 
     return {
         "status": "healthy",
-        "model_loaded": True
+        "model_loaded": True,
+        "model_version": "2.0"
     }
 
 
@@ -129,33 +123,59 @@ def predict(data: SensorData):
     # Get model probability
     probability = model.predict_proba(input_df)[0][1]
 
-    # IMPORTANT:
     # Convert NumPy value to normal Python float
     probability = float(probability)
 
     # Convert to percentage
     probability_percent = probability * 100.0
 
-    # Binary prediction
-    prediction = int(probability >= 0.50)
+    # ========================================================
+    # BINARY PREDICTION
+    # ========================================================
+    #
+    # The threshold was selected during model training:
+    # threshold = 0.42
+    #
 
-    # Risk level
+    prediction = int(probability >= MODEL_THRESHOLD)
+
+
+    # ========================================================
+    # RISK LEVEL
+    # ========================================================
+
     if probability < 0.30:
+
         risk = "LOW"
 
-    elif probability < 0.60:
+    elif probability < MODEL_THRESHOLD:
+
         risk = "MODERATE"
 
     else:
+
         risk = "HIGH"
 
-    # Return JSON-safe values
+
+    # ========================================================
+    # RETURN RESULT
+    # ========================================================
+
     return {
+
         "landslide_probability": round(
             probability_percent,
             2
         ),
+
         "prediction": prediction,
+
         "risk": risk,
-        "model": "XGBoost"
+
+        "model": "XGBoost",
+
+        "model_version": "2.0",
+
+        "threshold": MODEL_THRESHOLD
+
     }
