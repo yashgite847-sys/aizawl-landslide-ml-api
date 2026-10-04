@@ -3,36 +3,15 @@ from pydantic import BaseModel
 import pandas as pd
 import joblib
 import os
-
-
-# ============================================================
-# CREATE API
-# ============================================================
+import time
 
 app = FastAPI(
     title="GeoX Landslide Risk Prediction API",
-    description="AI-based landslide risk prediction using the trained ML model",
-    version="2.0"
+    description="AI-based landslide risk prediction using XGBoost",
+    version="2.1"
 )
 
-
-# ============================================================
-# LOAD TRAINED MODEL
-# ============================================================
-
 MODEL_FILE = "Aizawl_Landslide_XGBoost_Model.pkl"
-
-if not os.path.exists(MODEL_FILE):
-    raise FileNotFoundError(
-        f"Model file '{MODEL_FILE}' was not found."
-    )
-
-model = joblib.load(MODEL_FILE)
-
-
-# ============================================================
-# MODEL FEATURES
-# ============================================================
 
 FEATURES = [
     "rainfall_mm",
@@ -44,138 +23,115 @@ FEATURES = [
     "is_monsoon"
 ]
 
-
-# ============================================================
-# MODEL THRESHOLD
-# ============================================================
-
 MODEL_THRESHOLD = 0.42
 
-
-# ============================================================
-# INPUT DATA
-# ============================================================
-
-class SensorData(BaseModel):
-
-    rainfall_mm: float
-
-    soil_moisture_0_10cm: float
-
-    temperature_c: float
-
-    specific_humidity_kg_kg: float
-
-    month: int
-
-    day_of_year: int
-
-    is_monsoon: int
+model = None
+model_loaded_at = None
 
 
-# ============================================================
-# HOME
-# ============================================================
+def load_model():
+    global model, model_loaded_at
+
+    if not os.path.exists(MODEL_FILE):
+        raise FileNotFoundError(
+            f"Model file '{MODEL_FILE}' was not found."
+        )
+
+    model = joblib.load(MODEL_FILE)
+    model_loaded_at = time.time()
+
+    print("============================================")
+    print("GeoX XGBoost model loaded successfully")
+    print(f"Model file: {MODEL_FILE}")
+    print(f"Features: {len(FEATURES)}")
+    print(f"Threshold: {MODEL_THRESHOLD}")
+    print("============================================")
+
+
+@app.on_event("startup")
+def startup_event():
+    load_model()
+
 
 @app.get("/")
 def home():
-
     return {
         "status": "online",
         "message": "GeoX Landslide Risk Prediction API",
         "model": "XGBoost",
-        "model_version": "2.0",
+        "model_version": "2.1",
         "features": len(FEATURES),
         "threshold": MODEL_THRESHOLD
     }
 
 
-# ============================================================
-# HEALTH CHECK
-# ============================================================
-
 @app.get("/health")
 def health():
-
     return {
         "status": "healthy",
-        "model_loaded": True,
-        "model_version": "2.0"
+        "model_loaded": model is not None,
+        "model_version": "2.1"
     }
 
 
-# ============================================================
-# PREDICTION
-# ============================================================
+class SensorData(BaseModel):
+    rainfall_mm: float
+    soil_moisture_0_10cm: float
+    temperature_c: float
+    specific_humidity_kg_kg: float
+    month: int
+    day_of_year: int
+    is_monsoon: int
+
 
 @app.post("/predict")
 def predict(data: SensorData):
 
-    # Convert Pydantic input to dictionary
+    if model is None:
+        load_model()
+
     input_data = data.model_dump()
 
-    # Create dataframe in EXACT feature order
     input_df = pd.DataFrame(
         [input_data],
         columns=FEATURES
     )
 
-    # Get model probability
+    print("============================================")
+    print("NEW PREDICTION REQUEST")
+    print(input_data)
+    print("============================================")
+
     probability = model.predict_proba(input_df)[0][1]
 
-    # Convert NumPy value to normal Python float
     probability = float(probability)
-
-    # Convert to percentage
     probability_percent = probability * 100.0
 
-    # ========================================================
-    # BINARY PREDICTION
-    # ========================================================
-    #
-    # The threshold was selected during model training:
-    # threshold = 0.42
-    #
-
-    prediction = int(probability >= MODEL_THRESHOLD)
-
-
-    # ========================================================
-    # RISK LEVEL
-    # ========================================================
+    prediction = int(
+        probability >= MODEL_THRESHOLD
+    )
 
     if probability < 0.30:
-
         risk = "LOW"
-
     elif probability < MODEL_THRESHOLD:
-
         risk = "MODERATE"
-
     else:
-
         risk = "HIGH"
 
-
-    # ========================================================
-    # RETURN RESULT
-    # ========================================================
-
-    return {
-
+    result = {
         "landslide_probability": round(
             probability_percent,
             2
         ),
-
         "prediction": prediction,
-
         "risk": risk,
-
         "model": "XGBoost",
-
-        "model_version": "2.0",
-
+        "model_version": "2.1",
         "threshold": MODEL_THRESHOLD
-
     }
+
+    print("PREDICTION RESULT")
+    print(result)
+    print("============================================")
+
+    return result
